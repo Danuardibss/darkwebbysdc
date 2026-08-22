@@ -11,6 +11,14 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
+# Import fungsi validator kredensial
+try:
+    from validator import check_cpanel_login
+except ImportError:
+    # Fallback function jika validator.py belum ditemukan
+    def check_cpanel_login(target_url, username, password):
+        return {"status": "ERROR", "message": "Module validator.py tidak ditemukan!"}
+
 # ==========================================
 # 1. CORE OSINT & BREACH FUNCTIONS
 # ==========================================
@@ -133,7 +141,7 @@ async def run_scan_pipeline(target):
     }
 
 # ==========================================
-# 3. FASTAPI SERVER WITH AUTO-REDIRECT
+# 3. FASTAPI SERVER WITH AUTO-REDIRECT & VALIDATOR
 # ==========================================
 app = FastAPI(title="UBA OSINT & Threat Intelligence API")
 
@@ -144,8 +152,16 @@ async def root_redirect():
 
 @app.get("/api/scan")
 async def api_scan_endpoint(target: str):
-    """Endpoint untuk pemanggilan via Web UI / Mobile App / Backend Service."""
+    """Endpoint untuk pemanggilan OSINT Scanner via Web UI / Mobile App / Backend Service."""
     return await run_scan_pipeline(target)
+
+@app.get("/api/validate/cpanel")
+async def validate_cpanel_endpoint(url: str, user: str, pwd: str):
+    """Endpoint untuk tes keabsahan (validasi live login) akun cPanel hasil breach."""
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, check_cpanel_login, url, user, pwd)
+    return result
 
 # ==========================================
 # 4. CLI ARGUMENT PARSER
