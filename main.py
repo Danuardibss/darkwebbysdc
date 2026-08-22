@@ -5,53 +5,38 @@ import shutil
 import asyncio
 import concurrent.futures
 import requests
+import argparse
+from bs4 import BeautifulSoup
+from datetime import datetime
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 # ==========================================
-# CONFIGURATION: API KEYS (Opsional)
-# Isikan Key jika kamu/tim sudah berlangganan
+# 1. CORE OSINT & BREACH FUNCTIONS
 # ==========================================
-DEHASHED_EMAIL = os.getenv("DEHASHED_EMAIL", "")  # Email akun DeHashed
-DEHASHED_API_KEY = os.getenv("DEHASHED_API_KEY", "")  # API Key DeHashed
-LEAK_LOOKUP_API_KEY = os.getenv("LEAK_LOOKUP_KEY", "")  # API Key Leak-Lookup
-
-def check_holehe_sync(email):
+def search_darkweb_ahmia(query):
+    url = f"https://ahmia.fi/search/?q={query}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
-        bat_path = os.path.join(os.getcwd(), "holehe.bat")
-        holehe_exe = bat_path if os.path.exists(bat_path) else (shutil.which("holehe") or r"env\Scripts\holehe.exe")
-        
-        cmd = [holehe_exe, email, "--only-used"]
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
-        raw_output = result.stdout.strip() if result.stdout else ""
-
-        registered_services = []
-        for line in raw_output.splitlines():
-            line = line.strip()
-            if line.startswith("[+]"):
-                domain = line.replace("[+]", "").strip()
-                if "Email used" not in domain and "websites checked" not in domain and "Rate limit" not in domain:
-                    registered_services.append(domain)
-
-        return registered_services
-    except Exception:
-        return []
-
-def check_maigret_single_user(username):
-    try:
-        local_exe = os.path.join(os.getcwd(), "env", "Scripts", "maigret.exe")
-        maigret_cmd = local_exe if os.path.exists(local_exe) else (shutil.which("maigret") or "maigret")
-
-        cmd = [maigret_cmd, username, "--top-sites", "100", "--no-progressbar", "--no-check-updates", "--timeout", "8"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, shell=True)
-        
-        profiles = []
-        for line in (result.stdout or "").splitlines():
-            if "[+]" in line and "http" in line:
-                parts = line.strip().split("http")
-                if len(parts) > 1:
-                    profiles.append("http" + parts[1].strip())
-        return profiles
-    except Exception:
-        return []
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, 'html.parser')
+            results = []
+            for li in soup.find_all('li', class_='result'):
+                title_elem = li.find('a')
+                snippet_elem = li.find('p')
+                cite_elem = li.find('cite')
+                
+                if title_elem and cite_elem:
+                    results.append({
+                        "title": title_elem.text.strip(),
+                        "onion_url": cite_elem.text.strip(),
+                        "snippet": snippet_elem.text.strip() if snippet_elem else "No description"
+                    })
+            return {"status": "SUCCESS", "total_found": len(results), "matches": results}
+        return {"status": "CLEAN", "total_found": 0, "matches": []}
+    except Exception as e:
+        return {"status": "ERROR", "message": str(e)}
 
 def check_stealer_log_sync(email):
     url = f"https://cavalier.hudsonrock.com/api/v1/osint-tools/search-by-email?email={email}"
@@ -64,7 +49,7 @@ def check_stealer_log_sync(email):
                 "stealer_logs_count": data.get("stealer_logs_count", 0),
                 "compromised_passwords": data.get("passwords_count", 0)
             }
-        return {"status": "CLEAN", "message": "No stealer log infection found."}
+        return {"status": "CLEAN", "stealer_logs_count": 0, "compromised_passwords": 0}
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
 
@@ -82,117 +67,112 @@ def check_public_breaches_sync(email):
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
 
-# ==========================================
-# ADVANCED BREACH ENGINES (Leak-Lookup & DeHashed)
-# ==========================================
-def check_leak_lookup_sync(username):
-    """Mengecek database kebocoran data berdasarkan USERNAME via Leak-Lookup API."""
-    if not LEAK_LOOKUP_API_KEY:
-        return {"status": "SKIPPED", "message": "API Key Leak-Lookup belum diisi."}
-    
-    url = "https://leak-lookup.com/api/search"
-    payload = {"key": LEAK_LOOKUP_API_KEY, "type": "username", "query": username}
+def check_holehe_sync(email):
     try:
-        res = requests.post(url, data=payload, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if not data.get("error"):
-                databases = list(data.get("message", {}).keys())
-                return {"status": "BREACHED", "total": len(databases), "leaked_databases": databases}
-        return {"status": "CLEAN", "total": 0, "leaked_databases": []}
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
+        bat_path = os.path.join(os.getcwd(), "holehe.bat")
+        holehe_exe = bat_path if os.path.exists(bat_path) else (shutil.which("holehe") or r"env\Scripts\holehe.exe")
+        cmd = [holehe_exe, email, "--only-used"]
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        raw_output = result.stdout.strip() if result.stdout else ""
 
-def check_dehashed_sync(query, query_type="email"):
-    """Mengecek database kebocoran data mendalam via DeHashed API (Email/Username)."""
-    if not DEHASHED_EMAIL or not DEHASHED_API_KEY:
-        return {"status": "SKIPPED", "message": "Credentials DeHashed (Email/API Key) belum diisi."}
-    
-    url = f"https://api.dehashed.com/search?query={query_type}:{query}"
-    headers = {"Accept": "application/json"}
-    try:
-        res = requests.get(url, auth=(DEHASHED_EMAIL, DEHASHED_API_KEY), headers=headers, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            entries = data.get("entries", [])
-            sources = list(set([entry.get("database_name") for entry in entries if entry.get("database_name")])) if entries else []
-            return {
-                "status": "BREACHED" if data.get("total", 0) > 0 else "CLEAN",
-                "total_records": data.get("total", 0),
-                "leaked_sources": sources
-            }
-        return {"status": "API_ERROR", "code": res.status_code}
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
+        registered = []
+        for line in raw_output.splitlines():
+            line = line.strip()
+            if line.startswith("[+]"):
+                domain = line.replace("[+]", "").strip()
+                if "Email used" not in domain and "websites checked" not in domain and "Rate limit" not in domain:
+                    registered.append(domain)
+        return registered
+    except Exception:
+        return []
+
+def generate_html_report(data, filename):
+    onion_rows = "".join([f"<tr><td style='color:#f43f5e;'>{i['title']}</td><td style='font-family:monospace; color:#38bdf8;'>{i['onion_url']}</td><td>{i['snippet']}</td></tr>" for i in data["results"]["darkweb_exposure"]["matches"]])
+    if not onion_rows:
+        onion_rows = "<tr><td colspan='3' style='text-align:center;'>Tidak ada temuan di Dark Web.</td></tr>"
+
+    breach_tags = "".join([f"<span style='background:#881337; color:#fecdd3; padding:4px 8px; margin:2px; display:inline-block; border-radius:4px;'>{b}</span>" for b in data["results"]["data_breach_history"].get("exposed_in", [])])
+    site_tags = "".join([f"<span style='background:#1e3a8a; color:#bfdbfe; padding:4px 8px; margin:2px; display:inline-block; border-radius:4px;'>{s}</span>" for s in data["results"]["registered_platforms"]["sites"]])
+
+    html_content = f"""
+    <!DOCTYPE html><html><head><meta charset="UTF-8"><title>OSINT Report - {data['target']}</title>
+    <style>body{{font-family:sans-serif; background:#0f172a; color:#e2e8f0; padding:30px;}} table{{width:100%; border-collapse:collapse; background:#1e293b; margin-top:15px;}} th,td{{padding:12px; border:1px solid #334155;}}</style>
+    </head><body>
+    <h1>REPORT TARGET: {data['target']}</h1><p>Generated: {data['timestamp']}</p>
+    <h2>Dark Web Findings</h2><table><thead><tr><th>Title</th><th>URL</th><th>Snippet</th></tr></thead><tbody>{onion_rows}</tbody></table>
+    <h2>Data Breaches ({data['results']['data_breach_history'].get('total_breaches',0)})</h2><div>{breach_tags}</div>
+    <h2>Registered Sites ({data['results']['registered_platforms']['total']})</h2><div>{site_tags}</div>
+    </body></html>
+    """
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    print(f"\n[+] SUCCESS: File HTML disimpan ke -> {filename}")
 
 # ==========================================
-# ASYNC PIPELINE EXECUTOR
+# 2. ASYNC CORE PIPELINE
 # ==========================================
-async def run_full_scan_async(email, aliases):
-    print("\n====================================================")
-    print("   UBA ADVANCED THREAT & BREACH INTELLIGENCE ENGINE ")
-    print("====================================================")
-    print(f"[*] Target Email    : {email}")
-    print(f"[*] Target Aliases  : {', '.join(aliases)}")
-    print(f"[*] Executing Multi-Vector OSINT Scan...\n")
-
+async def run_scan_pipeline(target):
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor() as pool:
-        # Footprint Scanning Tasks
-        task_holehe = loop.run_in_executor(pool, check_holehe_sync, email)
-        maigret_tasks = [loop.run_in_executor(pool, check_maigret_single_user, alias) for alias in aliases]
-        
-        # Threat & Breach Scanning Tasks
-        task_stealer = loop.run_in_executor(pool, check_stealer_log_sync, email)
-        task_breach_public = loop.run_in_executor(pool, check_public_breaches_sync, email)
-        
-        # Premium Breach Lookup Tasks
-        leak_lookup_tasks = [loop.run_in_executor(pool, check_leak_lookup_sync, alias) for alias in aliases]
-        task_dehashed_email = loop.run_in_executor(pool, check_dehashed_sync, email, "email")
-
-        # Gathering Async Tasks
-        holehe_res = await task_holehe
-        maigret_results = await asyncio.gather(*maigret_tasks)
-        stealer_res = await task_stealer
-        breach_pub_res = await task_breach_public
-        leak_lookup_results = await asyncio.gather(*leak_lookup_tasks)
-        dehashed_res = await task_dehashed_email
-
-    # Flatten Maigret Results
-    all_profiles = []
-    for res in maigret_results:
-        all_profiles.extend(res)
-
-    # Format Username Breach Results
-    username_breaches = {}
-    for idx, alias in enumerate(aliases):
-        username_breaches[alias] = leak_lookup_results[idx]
+        darkweb_res, stealer_res, breach_res, holehe_res = await asyncio.gather(
+            loop.run_in_executor(pool, search_darkweb_ahmia, target),
+            loop.run_in_executor(pool, check_stealer_log_sync, target),
+            loop.run_in_executor(pool, check_public_breaches_sync, target),
+            loop.run_in_executor(pool, check_holehe_sync, target)
+        )
 
     return {
-        "target_email": email,
-        "scanned_aliases": aliases,
+        "target": target,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "results": {
-            "account_enumeration": {
-                "email_registered_sites": {"total": len(holehe_res), "sites": holehe_res},
-                "username_profiles_found": {"total_found": len(all_profiles), "urls": all_profiles}
-            },
-            "malware_stealer_threat": stealer_res,
-            "data_breach_intelligence": {
-                "email_public_breaches": breach_pub_res,
-                "email_dehashed_breaches": dehashed_res,
-                "username_leak_lookup_breaches": username_breaches
-            }
+            "darkweb_exposure": darkweb_res,
+            "stealer_malware_logs": stealer_res,
+            "data_breach_history": breach_res,
+            "registered_platforms": {"total": len(holehe_res), "sites": holehe_res}
         }
     }
 
+# ==========================================
+# 3. FASTAPI SERVER WITH AUTO-REDIRECT
+# ==========================================
+app = FastAPI(title="UBA OSINT & Threat Intelligence API")
+
+@app.get("/")
+async def root_redirect():
+    """Otomatis mengarahkan user dari / ke halaman dokumentasi interaktif /docs."""
+    return RedirectResponse(url="/docs")
+
+@app.get("/api/scan")
+async def api_scan_endpoint(target: str):
+    """Endpoint untuk pemanggilan via Web UI / Mobile App / Backend Service."""
+    return await run_scan_pipeline(target)
+
+# ==========================================
+# 4. CLI ARGUMENT PARSER
+# ==========================================
 if __name__ == "__main__":
-    email_input = input("Masukkan Email Target: ").strip()
-    alias_input = input("Masukkan Alias Username (pisahkan koma, misal: danuarasmoro, danuar_a): ").strip()
-    
-    aliases = [a.strip() for a in alias_input.split(",") if a.strip()] if alias_input else [email_input.split("@")[0]]
-    
-    if email_input:
-        output = asyncio.run(run_full_scan_async(email_input, aliases))
-        print("\n================--- [ INTEGRATED OSINT REPORT ] ---================")
-        print(json.dumps(output, indent=4))
-        print("==================================================================")
+    parser = argparse.ArgumentParser(description="UBA Dark Web & Threat Intelligence Engine")
+    parser.add_argument("--target", "-t", type=str, help="Email/Username target yang ingin discan")
+    parser.add_argument("--report", "-r", action="store_true", help="Tambahkan flag ini jika INGIN meng-generate file HTML")
+    parser.add_argument("--api", action="store_true", help="Jalankan server REST API berbasis FastAPI")
+
+    args = parser.parse_args()
+
+    # Mode 1: REST API Server Mode
+    if args.api:
+        import uvicorn
+        print("[*] Starting UBA Threat Intel REST API Server on http://127.0.0.1:8000 ...")
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+
+    # Mode 2: CLI Mode
+    else:
+        target = args.target if args.target else input("Masukkan Target Email / Username: ").strip()
+        if target:
+            scan_output = asyncio.run(run_scan_pipeline(target))
+            print("================--- [ FINAL RESULTS ] ---================")
+            print(json.dumps(scan_output, indent=4))
+            print("=========================================================")
+
+            if args.report:
+                filename = f"report_{target.replace('@', '_')}.html"
+                generate_html_report(scan_output, filename)
