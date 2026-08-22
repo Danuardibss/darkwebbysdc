@@ -3,16 +3,16 @@ import requests
 
 st.set_page_config(page_title="UBA Dark Web Intelligence", page_icon="🛡️", layout="wide")
 
-st.title("🛡️ UBA Threat Intelligence & Dark Web Monitor")
-st.caption("Engine Monitoring Kebocoran Data & Dark Web Real-Time")
+st.title("UBA Threat Intelligence & Dark Web Monitor")
+st.caption("Engine Monitoring Data Breach")
 
-target_input = st.text_input("Masukkan Target Email / Username:", placeholder="contoh: test@gmail.com")
+target_input = st.text_input("Masukkan Target Email / Username:", placeholder="contoh: 123@gmail.com")
 
-if st.button("Jalankan Scanning", type="primary"):
+if st.button("Run Scanning", type="primary"):
     if not target_input:
-        st.warning("Masukkan email target terlebih dahulu!")
+        st.warning("Input the target is required!")
     else:
-        with st.spinner("Menghubungi API Engine & melakukan pencarian..."):
+        with st.spinner("Requesting API Server..."):
             try:
                 # Memanggil API FastAPI yang sedang jalan di port 8000
                 response = requests.get(f"http://127.0.0.1:8000/api/scan?target={target_input}")
@@ -20,7 +20,7 @@ if st.button("Jalankan Scanning", type="primary"):
                     data = response.json()
                     res = data.get("results", {})
 
-                    st.success(f"Scan Selesai untuk Target: {data.get('target')}")
+                    st.success(f"Scanning Process is already completed: {data.get('target')}")
                     
                     # Metric Cards
                     col1, col2, col3 = st.columns(3)
@@ -31,7 +31,7 @@ if st.button("Jalankan Scanning", type="primary"):
                     st.divider()
 
                     # Tab Detail
-                    tab1, tab2, tab3 = st.tabs(["🔥 Kebocoran Data", "🌐 Dark Web Findings", "🔍 Registered Accounts"])
+                    tab1, tab2, tab3 = st.tabs(["Data Breaches", "Dark Web Findings", "Registered Accounts"])
 
                     with tab1:
                         st.subheader("Riwayat Data Breach")
@@ -42,7 +42,7 @@ if st.button("Jalankan Scanning", type="primary"):
                             st.info("Tidak terdeteksi kebocoran data publik.")
 
                     with tab2:
-                        st.subheader("Temuan Jaringan Dark Web")
+                        st.subheader("Dark Web Findings")
                         matches = res.get("darkweb_exposure", {}).get("matches", [])
                         if matches:
                             st.dataframe(matches)
@@ -50,7 +50,7 @@ if st.button("Jalankan Scanning", type="primary"):
                             st.info("Tidak ada jejak di indeks Dark Web.")
 
                     with tab3:
-                        st.subheader("Platform Terdaftar (Footprint)")
+                        st.subheader("Registered Platforms")
                         sites = res.get("registered_platforms", {}).get("sites", [])
                         if sites:
                             st.write(sites)
