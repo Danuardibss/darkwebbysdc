@@ -1,55 +1,43 @@
 import requests
+import ftplib
 
-def check_cpanel_login(target_url, username, password):
-    """
-    Validasi kredensial cPanel / Webmail.
-    target_url: misal 'https://sps-domain.com:2083' atau 'https://sps-domain.com/cpanel'
-    """
+def check_cpanel(target_url, username, password):
+    """Validasi Kredensial cPanel / Webmail"""
     login_url = f"{target_url.rstrip('/')}/login/?login_only=1"
-    payload = {
-        "user": username,
-        "pass": password
-    }
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
-    
+    payload = {"user": username, "pass": password}
     try:
-        # Timeout pendek biar scan gak menggantung
-        response = requests.post(login_url, data=payload, headers=headers, timeout=5, verify=False)
-        
-        if response.status_code == 200:
-            res_json = response.json()
-            # cPanel API biasanya balikin status 1 kalau login sukses
-            if res_json.get("status") == 1 or "security_token" in res_json:
-                return {
-                    "status": "VALID",
-                    "message": "Credential LEGIT! Login Berhasil.",
-                    "redirect_url": res_json.get("redirect")
-                }
-            else:
-                return {"status": "INVALID", "message": "Password salah / kadaluarsa."}
-                
-        elif response.status_code == 401:
-             return {"status": "INVALID", "message": "Unauthorized (401)."}
-             
-        return {"status": "UNKNOWN", "message": f"Server merespon dengan HTTP {response.status_code}"}
-        
-    except requests.exceptions.Timeout:
-        return {"status": "ERROR", "message": "Connection Timeout (Server down / Port tertutup)."}
+        res = requests.post(login_url, data=payload, timeout=5, verify=False)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("status") == 1 or "security_token" in data:
+                return {"status": "VALID", "message": "Login cPanel Berhasil."}
+        return {"status": "INVALID", "message": "Kredensial cPanel Salah/Kadaluarsa."}
     except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
+        return {"status": "ERROR", "message": f"Koneksi gagal: {str(e)}"}
 
-# ==========================================
-# TEST SKRIP MANDIRI
-# ==========================================
-if __name__ == "__main__":
-    print("=== TEST CREDENTIAL VALIDATOR ===")
-    target = input("Masukkan URL Target cPanel (misal: https://example.com:2083): ").strip()
-    user = input("Username: ").strip()
-    pwd = input("Password: ").strip()
-    
-    print("\n[*] Mengetes validasi login...")
-    result = check_cpanel_login(target, user, pwd)
-    print(f"[RESULT]: {result}")
+def check_ftp(host, username, password, port=21):
+    """Validasi Kredensial FTP Server"""
+    # Bersihkan prefix URL jika ada
+    clean_host = host.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+    try:
+        ftp = ftplib.FTP()
+        ftp.connect(clean_host, int(port), timeout=5)
+        ftp.login(username, password)
+        ftp.quit()
+        return {"status": "VALID", "message": "Akses FTP Server Berhasil."}
+    except ftplib.error_perm:
+        return {"status": "INVALID", "message": "Kredensial FTP Ditolak (530 User/Pass wrong)."}
+    except Exception as e:
+        return {"status": "ERROR", "message": f"FTP Error: {str(e)}"}
+
+def check_basic_auth(target_url, username, password):
+    """Validasi HTTP Basic Auth (Router/Admin Panel/Internal API)"""
+    try:
+        res = requests.get(target_url, auth=(username, password), timeout=5, verify=False)
+        if res.status_code in [200, 301, 302]:
+            return {"status": "VALID", "message": f"Authentication Berhasil (HTTP {res.status_code})."}
+        elif res.status_code == 401:
+            return {"status": "INVALID", "message": "Unauthorized (HTTP 401)."}
+        return {"status": "UNKNOWN", "message": f"HTTP Response Code: {res.status_code}"}
+    except Exception as e:
+        return {"status": "ERROR", "message": f"HTTP Auth Error: {str(e)}"}

@@ -8,16 +8,24 @@ import requests
 import argparse
 from bs4 import BeautifulSoup
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import RedirectResponse
 
-# Import fungsi validator kredensial
+# ==========================================
+# IMPORT VALIDATOR (WITH FALLBACK)
+# ==========================================
 try:
-    from validator import check_cpanel_login
+    from validator import check_cpanel, check_ftp, check_basic_auth
 except ImportError:
-    # Fallback function jika validator.py belum ditemukan
-    def check_cpanel_login(target_url, username, password):
-        return {"status": "ERROR", "message": "Module validator.py tidak ditemukan!"}
+    def check_cpanel(url, user, pwd):
+        return {"status": "ERROR", "message": "Fungsi check_cpanel tidak ditemukan di validator.py"}
+    def check_ftp(url, user, pwd):
+        return {"status": "ERROR", "message": "Fungsi check_ftp tidak ditemukan di validator.py"}
+    def check_basic_auth(url, user, pwd):
+        return {"status": "ERROR", "message": "Fungsi check_basic_auth tidak ditemukan di validator.py"}
+
+# Alias untuk backwards compatibility
+check_cpanel_login = check_cpanel
 
 # ==========================================
 # 1. CORE OSINT & BREACH FUNCTIONS
@@ -141,9 +149,13 @@ async def run_scan_pipeline(target):
     }
 
 # ==========================================
-# 3. FASTAPI SERVER WITH AUTO-REDIRECT & VALIDATOR
+# 3. FASTAPI SERVER & ENDPOINTS
 # ==========================================
-app = FastAPI(title="UBA OSINT & Threat Intelligence API")
+app = FastAPI(
+    title="UBA OSINT & Threat Intelligence API",
+    description="Engine terpadu pemindaian OSINT data breach dan validator kredensial infrastruktur.",
+    version="2.0.0"
+)
 
 @app.get("/")
 async def root_redirect():
@@ -152,16 +164,33 @@ async def root_redirect():
 
 @app.get("/api/scan")
 async def api_scan_endpoint(target: str):
-    """Endpoint untuk pemanggilan OSINT Scanner via Web UI / Mobile App / Backend Service."""
+    """Endpoint pemindaian OSINT Email/Username."""
     return await run_scan_pipeline(target)
 
 @app.get("/api/validate/cpanel")
 async def validate_cpanel_endpoint(url: str, user: str, pwd: str):
-    """Endpoint untuk tes keabsahan (validasi live login) akun cPanel hasil breach."""
+    """Endpoint cPanel lama (tetap dipertahankan agar dashboard tidak error)."""
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor() as pool:
-        result = await loop.run_in_executor(pool, check_cpanel_login, url, user, pwd)
+        result = await loop.run_in_executor(pool, check_cpanel, url, user, pwd)
     return result
+
+@app.get("/api/validate")
+async def generic_validate_endpoint(
+    service_type: str = Query("cpanel", description="Jenis service: 'cpanel', 'ftp', atau 'basic_auth'"),
+    url: str = Query(..., description="Target Host / URL"),
+    user: str = Query(..., description="Username"),
+    pwd: str = Query(..., description="Password")
+):
+    """Endpoint Universal Multi-Protocol Credential Validator."""
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        if service_type.lower() == "ftp":
+            return await loop.run_in_executor(pool, check_ftp, url, user, pwd)
+        elif service_type.lower() == "basic_auth":
+            return await loop.run_in_executor(pool, check_basic_auth, url, user, pwd)
+        else:
+            return await loop.run_in_executor(pool, check_cpanel, url, user, pwd)
 
 # ==========================================
 # 4. CLI ARGUMENT PARSER
@@ -169,18 +198,15 @@ async def validate_cpanel_endpoint(url: str, user: str, pwd: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="UBA Dark Web & Threat Intelligence Engine")
     parser.add_argument("--target", "-t", type=str, help="Email/Username target yang ingin discan")
-    parser.add_argument("--report", "-r", action="store_true", help="Tambahkan flag ini jika INGIN meng-generate file HTML")
-    parser.add_argument("--api", action="store_true", help="Jalankan server REST API berbasis FastAPI")
+    parser.add_argument("--report", "-r", action="store_true", help="Generate file HTML hasil pemindaian")
+    parser.add_argument("--api", action="store_true", help="Jalankan REST API Server (FastAPI)")
 
     args = parser.parse_args()
 
-    # Mode 1: REST API Server Mode
     if args.api:
         import uvicorn
         print("[*] Starting UBA Threat Intel REST API Server on http://127.0.0.1:8000 ...")
         uvicorn.run(app, host="127.0.0.1", port=8000)
-
-    # Mode 2: CLI Mode
     else:
         target = args.target if args.target else input("Masukkan Target Email / Username: ").strip()
         if target:
