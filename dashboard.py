@@ -28,9 +28,18 @@ st.markdown("""
         font-size: 13px;
     }
 
-    div[data-testid="stInputInstructions"] {
-    display: none !important;
-}
+    /* Paksa sembunyikan semua indikator 'Press Enter to apply' */
+    [data-testid="stInputInstructions"],
+    div[data-testid="stInputInstructions"],
+    small[data-testid="stInputInstructions"],
+    div[data-baseweb="input"] small,
+    div[data-baseweb="input"] span[aria-hidden="true"],
+    div[data-baseweb="input"] ~ div {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+        opacity: 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
