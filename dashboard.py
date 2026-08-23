@@ -27,6 +27,10 @@ st.markdown("""
         font-weight: 500;
         font-size: 13px;
     }
+
+    div[data-testid="stInputInstructions"] {
+    display: none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
