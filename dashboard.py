@@ -2,139 +2,151 @@ import streamlit as st
 import requests
 import pandas as pd
 
-st.set_page_config(page_title="UBA Dark Web Intelligence", page_icon="🛡️", layout="wide")
+st.set_page_config(
+    page_title="Threat Intel Platform",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-st.title("UBA Threat Intelligence & Dark Web Monitor")
-st.caption("Engine Monitoring Data Breach & Threat Intelligence")
+# Custom Styling - Developer Console Style
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
 
-# Menu Utama Berbasis Tab
-main_tab1, main_tab2 = st.tabs(["🔍 OSINT Email Scan", "🔑 Credential Validator"])
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, sans-serif;
+    }
+    code, pre, stCode, div[data-baseweb="input"] input, textarea, .stDataFrame {
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+    h1, h2, h3 {
+        letter-spacing: -0.5px;
+    }
+    .stButton > button {
+        border-radius: 4px;
+        font-weight: 500;
+        font-size: 13px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# ==========================================
-# TAB 1: OSINT EMAIL SCANNER (KODE ASLI KAMU)
-# ==========================================
+st.title("Threat Intelligence Platform")
+st.caption("Internal Security Audit & Breach Monitoring System v2.1")
+
+main_tab1, main_tab2 = st.tabs(["OSINT Scan", "Credential Validator"])
+
+# --- TAB 1: OSINT SCANNER ---
 with main_tab1:
-    target_input = st.text_input("Masukkan Target Email / Username:", placeholder="contoh: 123@gmail.com")
+    target_input = st.text_input("Target Email / Username", placeholder="user@domain.com")
 
-    if st.button("Run Scanning", type="primary"):
-        if not target_input:
-            st.warning("Input the target is required!")
+    if st.button("Run Scan", type="primary"):
+        if not target_input.strip():
+            st.warning("Target parameter is required.")
         else:
-            with st.spinner("Requesting API Server..."):
+            with st.spinner("Processing API request..."):
                 try:
-                    # Memanggil API FastAPI yang sedang jalan di port 8000
-                    response = requests.get(f"http://127.0.0.1:8000/api/scan?target={target_input}")
-                    if response.status_code == 200:
-                        data = response.json()
-                        res = data.get("results", {})
+                    res = requests.get(f"http://127.0.0.1:8000/api/scan?target={target_input.strip()}", timeout=30)
+                    if res.status_code == 200:
+                        data = res.json()
+                        results = data.get("results", {})
 
-                        st.success(f"Scanning Process is already completed: {data.get('target')}")
-                        
-                        # Metric Cards
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("Data Breaches", res.get("data_breach_history", {}).get("total_breaches", 0))
-                        col2.metric("Stealer Logs", res.get("stealer_malware_logs", {}).get("stealer_logs_count", 0))
-                        col3.metric("Registered Sites", res.get("registered_platforms", {}).get("total", 0))
+                        st.success(f"Scan completed: {data.get('target')}")
+
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Data Breaches", results.get("data_breach_history", {}).get("total_breaches", 0))
+                        c2.metric("Stealer Logs", results.get("stealer_malware_logs", {}).get("stealer_logs_count", 0))
+                        c3.metric("Registered Sites", results.get("registered_platforms", {}).get("total", 0))
 
                         st.divider()
 
-                        # Tab Detail
-                        tab1, tab2, tab3 = st.tabs(["Data Breaches", "Dark Web Findings", "Registered Accounts"])
+                        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Breach History", "Dark Web Matches", "Registered Platforms"])
 
-                        with tab1:
-                            st.subheader("Riwayat Data Breach")
-                            breaches = res.get("data_breach_history", {}).get("exposed_in", [])
+                        with sub_tab1:
+                            breaches = results.get("data_breach_history", {}).get("exposed_in", [])
                             if breaches:
                                 st.write(breaches)
                             else:
-                                st.info("Tidak terdeteksi kebocoran data publik.")
+                                st.info("No breach records found.")
 
-                        with tab2:
-                            st.subheader("Dark Web Findings")
-                            matches = res.get("darkweb_exposure", {}).get("matches", [])
+                        with sub_tab2:
+                            matches = results.get("darkweb_exposure", {}).get("matches", [])
                             if matches:
-                                st.dataframe(matches)
+                                st.dataframe(matches, use_container_width=True)
                             else:
-                                st.info("Tidak ada jejak di indeks Dark Web.")
+                                st.info("No dark web indexed records found.")
 
-                        with tab3:
-                            st.subheader("Registered Platforms")
-                            sites = res.get("registered_platforms", {}).get("sites", [])
+                        with sub_tab3:
+                            sites = results.get("registered_platforms", {}).get("sites", [])
                             if sites:
                                 st.write(sites)
                             else:
-                                st.info("Tidak ada footprint platform terdeteksi.")
-
+                                st.info("No platform footprints detected.")
+                    else:
+                        st.error(f"API Error HTTP {res.status_code}")
                 except Exception as e:
-                    st.error(f"Gagal terhubung ke API Server. Pastikan 'python main.py --api' sedang berjalan! Error: {e}")
+                    st.error(f"Connection failure: {e}")
 
-# ==========================================
-# TAB 2: CREDENTIAL VALIDATOR
-# ==========================================
+# --- TAB 2: CREDENTIAL VALIDATOR ---
 with main_tab2:
-    st.subheader("cPanel & Webmail Live Credential Validator")
-    st.caption("Uji keabsahan kredensial hasil temuan leak atau stealer log secara live.")
+    st.subheader("Credential Live Validator")
 
-    # Form Single Credential Test
-    col_url, col_user, col_pass = st.columns([2, 1, 1])
-    with col_url:
-        cpanel_url = st.text_input("Target URL:", placeholder="https://example.com:2083")
-    with col_user:
-        cpanel_user = st.text_input("Username:", placeholder="admin")
-    with col_pass:
-        cpanel_pass = st.text_input("Password:", type="password", placeholder="••••••••")
+    c_svc, c_url, c_usr, c_pwd = st.columns([1.5, 3, 2, 2])
+    with c_svc:
+        service_type = st.selectbox("Service", ["cpanel", "ftp", "basic_auth"])
+    with c_url:
+        target_url = st.text_input("Host / Target URL", placeholder="https://example.com:2083")
+    with c_usr:
+        username = st.text_input("Username", placeholder="admin")
+    with c_pwd:
+        password = st.text_input("Password", type="password", placeholder="••••••••")
 
     if st.button("Validate Credential", type="primary"):
-        if not cpanel_url or not cpanel_user or not cpanel_pass:
-            st.warning("URL, Username, dan Password wajib diisi!")
+        if not target_url or not username or not password:
+            st.warning("All input fields are required.")
         else:
-            with st.spinner("Testing live login ke target server..."):
+            with st.spinner("Testing authentication..."):
                 try:
-                    api_url = "http://127.0.0.1:8000/api/validate/cpanel"
                     params = {
-                        "url": cpanel_url.strip(),
-                        "user": cpanel_user.strip(),
-                        "pwd": cpanel_pass.strip()
+                        "service_type": service_type.lower(),
+                        "url": target_url.strip(),
+                        "user": username.strip(),
+                        "pwd": password.strip()
                     }
-                    res = requests.get(api_url, params=params, timeout=10)
-                    
+                    res = requests.get("http://127.0.0.1:8000/api/validate", params=params, timeout=10)
                     if res.status_code == 200:
-                        result = res.json()
-                        status = result.get("status")
-                        msg = result.get("message", "")
+                        out = res.json()
+                        status = out.get("status")
+                        msg = out.get("message", "")
 
                         if status == "VALID":
-                            st.success(f"🟩 **LEGIT / VALID:** {msg}")
-                            if "redirect_url" in result:
-                                st.info(f"Redirect URL: {result.get('redirect_url')}")
+                            st.success(f"[VALID] {msg}")
                         elif status == "INVALID":
-                            st.error(f"🟥 **INVALID:** {msg}")
+                            st.error(f"[INVALID] {msg}")
                         else:
-                            st.warning(f"⚠️ **{status}:** {msg}")
+                            st.warning(f"[{status}] {msg}")
                     else:
-                        st.error(f"API Server Error HTTP {res.status_code}")
+                        st.error(f"API Error HTTP {res.status_code}")
                 except Exception as e:
-                    st.error(f"Gagal terhubung ke API Validator: {e}")
+                    st.error(f"Connection failure: {e}")
 
     st.divider()
 
-    # Bulk Testing via Text Area
-    with st.expander("⚡ Bulk Testing (Pengujian Banyak Credential Sekaligus)"):
-        st.caption("Masukkan list credential dengan format per baris: `URL|USERNAME|PASSWORD`")
+    with st.expander("Bulk Credential Testing"):
+        st.caption("Input format (one entry per line): URL|USERNAME|PASSWORD")
         bulk_text = st.text_area(
-            "List Credential:",
-            placeholder="https://site1.com:2083|user1|pass1\nhttps://site2.com:2083|user2|pass2",
+            "Credential List",
+            placeholder="https://site1.com:2083|user1|pass1\n192.168.1.1|root|pass2",
             height=130
         )
-        
-        if st.button("Run Bulk Validation"):
+
+        if st.button("Run Bulk Test"):
             if not bulk_text.strip():
-                st.warning("Masukkan setidaknya 1 baris credential!")
+                st.warning("Input list cannot be empty.")
             else:
                 lines = [line.strip() for line in bulk_text.strip().split("\n") if line.strip()]
                 results = []
-                
-                progress_bar = st.progress(0)
+
+                prog = st.progress(0)
                 for idx, line in enumerate(lines):
                     if "|" in line:
                         parts = line.split("|")
@@ -142,8 +154,8 @@ with main_tab2:
                             u, usr, pwd = parts[0].strip(), parts[1].strip(), parts[2].strip()
                             try:
                                 res = requests.get(
-                                    "http://127.0.0.1:8000/api/validate/cpanel", 
-                                    params={"url": u, "user": usr, "pwd": pwd}, 
+                                    "http://127.0.0.1:8000/api/validate",
+                                    params={"service_type": service_type.lower(), "url": u, "user": usr, "pwd": pwd},
                                     timeout=8
                                 )
                                 if res.status_code == 200:
@@ -157,16 +169,15 @@ with main_tab2:
                                 st_code = "ERROR"
                                 message = str(err)
 
-                            status_display = "🟩 VALID" if st_code == "VALID" else ("🟥 INVALID" if st_code == "INVALID" else "⚠️ " + str(st_code))
                             results.append({
-                                "Target URL": u,
-                                "Username": usr,
-                                "Status": status_display,
-                                "Keterangan": message
+                                "Host": u,
+                                "User": usr,
+                                "Status": f"[{st_code}]",
+                                "Response": message
                             })
-                    progress_bar.progress((idx + 1) / len(lines))
+                    prog.progress((idx + 1) / len(lines))
 
                 if results:
                     st.dataframe(pd.DataFrame(results), use_container_width=True)
                 else:
-                    st.error("Format input tidak sesuai! Gunakan pemisah (`|`).")
+                    st.error("Invalid format. Delimiter '|' is required.")
