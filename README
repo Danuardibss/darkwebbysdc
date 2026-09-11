@@ -1,0 +1,86 @@
+# Darkweb Monitoring Platform
+
+Platform internal Threat Intelligence berbasis Python untuk memantau kebocoran data (*credential leak*, *stealer logs*, dan *email footprint*) secara realtime.
+
+---
+
+## Dokumentasi Visual & Screenshots
+Semua tangkapan layar UI, diagram arsitektur, dan aset gambar pendukung tersimpan di folder berikut:
+[Lihat Folder Dokumentasi & Assets (`/docs`)](./docs/)
+
+
+## Tech Stack & Service Components
+
+| Component | Technology | Description |
+|---|---|---|
+| **API Core** | FastAPI | Gateway API endpoint & scanner pipeline controller |
+| **Task Queue** | Celery + Redis | Worker engine untuk eksekusi job scraping asinkron |
+| **Database** | PostgreSQL (Docker) | Relational storage (Port 5433) dengan ORM SQLAlchemy & UUID |
+| **Dashboard** | Streamlit | Interface monitoring internal SOC |
+| **CTI Modules** | HudsonRock, Holehe, BreachDirectory | Integration engine untuk *live-data* kebocoran & OSINT |
+
+---
+
+## Environment Variables Setup
+
+Pastikan file `.env` sudah tersedia di folder root project dengan variabel berikut sebelum menyalakan service:
+
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=cti_db
+POSTGRES_PORT=5433
+REDIS_URL=redis://localhost:6379/0
+RAPIDAPI_KEY=isi_jika_ingin_menggunakan
+
+Urutan Execution
+Penting: Docker Desktop harus dalam keadaan aktif (status engine running berwarna hijau di taskbar) sebelum masuk ke langkah nomor 2 yaa
+
+1. Nyalakan Base Infrastructure (Database & Redis)
+PowerShell
+docker compose up -d
+Verifikasi container: Jalankan docker ps dan pastikan PostgreSQL (Port 5433) serta Redis berstatus Up.
+
+2. Nyalakan API Engine (Terminal 1)
+PowerShell
+.\env\Scripts\Activate.ps1
+python main.py --api
+
+3. Nyalakan Celery Worker (Terminal 2)
+PowerShell
+.\env\Scripts\Activate.ps1
+celery -A tasks worker --loglevel=info -P solo
+
+4. Nyalakan Streamlit Dashboard (Terminal 3)
+PowerShell
+.\env\Scripts\Activate.ps1
+streamlit run dashboard.py
+
+
+🗂️ Directory Structure
+├── scrapers/
+│   ├── breach_service.py      # Integration module RapidAPI BreachDirectory
+│   ├── hudsonrock_service.py  # HudsonRock Cavalier API (Infostealer logs)
+│   └── holehe_service.py      # Holehe OSINT footprint engine
+├── docs/                      # Screenshots UI, diagram, dan aset visual
+├── models.py                  # Database schema (SQLAlchemy + UUID)
+├── database.py                # Database connection & session setup
+├── tasks.py                   # Celery task definitions
+├── main.py                    # FastAPI app & core pipeline logic
+├── dashboard.py               # Frontend Streamlit UI
+└── docker-compose.yml         # Base infrastructure (Postgres:5433 & Redis)
+
+
+⚠️ Known Troubleshooting & Notes
+Error psycopg2.OperationalError: Connection refused (Port 5433)
+Penyebab: Celery mengeksekusi koneksi DB sebelum container PostgreSQL siap, atau Docker Desktop di Windows mengalami hang.
+
+Solusi:
+Restart Docker Desktop.
+Jika Docker stuck, buka PowerShell Administrator dan jalankan wsl --shutdown. Buka kembali Docker Desktop, jalankan docker compose up -d, pastikan container statusnya up, baru jalankan Celery.
+
+Live Data Engine
+Seluruh modul scraper sudah menggunakan data riil (tanpa mock data):
+HudsonRock: Penarikan log perangkat terinfeksi malware (Lumma, RedLine, Vidar) berdasarkan target email.
+Holehe: Pengecekan registrasi email secara real-time di 120+ platform.
+BreachDirectory: Kueri langsung via RapidAPI endpoint.
