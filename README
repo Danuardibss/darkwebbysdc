@@ -1,23 +1,23 @@
 # Darkweb Monitoring Platform
 
-Platform internal Threat Intelligence berbasis Python untuk memantau kebocoran data (*credential leak*, *stealer logs*, dan *email footprint*) secara realtime.
+Platform internal Threat Intelligence berbasis Python untuk memantau kebocoran data (credential leak, stealer logs, dan email footprint) secara realtime.
 
 ---
 
 ## Dokumentasi Visual & Screenshots
 Semua tangkapan layar UI, diagram arsitektur, dan aset gambar pendukung tersimpan di folder berikut:
-[Lihat Folder Dokumentasi & Assets (`/docs`)](./docs/)
+[Lihat Dokumentasi (`https://docs.google.com/document/d/12RQWnkAy_-xwshXhbAwC45C3FqEQChxCQdaybee_M90/edit?usp=sharing/docs`)](./docs/)
 
 
 ## Tech Stack & Service Components
 
 | Component | Technology | Description |
 |---|---|---|
-| **API Core** | FastAPI | Gateway API endpoint & scanner pipeline controller |
-| **Task Queue** | Celery + Redis | Worker engine untuk eksekusi job scraping asinkron |
-| **Database** | PostgreSQL (Docker) | Relational storage (Port 5433) dengan ORM SQLAlchemy & UUID |
-| **Dashboard** | Streamlit | Interface monitoring internal SOC |
-| **CTI Modules** | HudsonRock, Holehe, BreachDirectory | Integration engine untuk *live-data* kebocoran & OSINT |
+| API Core | FastAPI | Gateway API endpoint & scanner pipeline controller |
+| Task Queue | Celery + Redis | Worker engine untuk eksekusi job scraping asinkron |
+| Database | PostgreSQL (Docker) | Relational storage (Port 5433) dengan ORM SQLAlchemy & UUID |
+| Dashboard | Streamlit | Interface monitoring internal SOC |
+| CTI Modules | HudsonRock, Holehe, BreachDirectory | Integration engine untuk live-data kebocoran & OSINT |
 
 ---
 
