@@ -84,3 +84,32 @@ Seluruh modul scraper sudah menggunakan data riil (tanpa mock data):
 HudsonRock: Penarikan log perangkat terinfeksi malware (Lumma, RedLine, Vidar) berdasarkan target email.
 Holehe: Pengecekan registrasi email secara real-time di 120+ platform.
 BreachDirectory: Kueri langsung via RapidAPI endpoint.
+
+
+
+```mermaid
+flowchart TD
+    subgraph Frontend [UI / Dashboard]
+        A[Streamlit UI]
+    end
+
+    subgraph Infrastructure [Backend & Database]
+        B[FastAPI Gateway]
+        C[(Redis Queue)]
+        D[Celery Worker]
+        E[(Postgres DB - Port 5433)]
+    end
+
+    subgraph Scrapers [Engine Scraping]
+        F[HudsonRock - Stealer Logs]
+        G[Holehe - OSINT Footprint]
+        H[BreachDirectory - RapidAPI]
+    end
+
+    A -->|1. User ngetik email & klik scan| B
+    B -->|2. Oper job ke antrean biar UI gak nge-hang| C
+    C -->|3. Worker ngambil antrean task| D
+    D -->|4. Jalanin 3 scraper barengan| F & G & H
+    F & G & H -->|5. Balikin data live hasil scraping| D
+    D -->|6. Simpan semua temuan ke DB| E
+    A -->|7. Tarik data dari DB & tampilkan di layar| E
